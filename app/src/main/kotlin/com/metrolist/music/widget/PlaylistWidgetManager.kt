@@ -191,6 +191,12 @@ class PlaylistWidgetManager @Inject constructor(
         }
         val views = RemoteViews(context.packageName, R.layout.widget_playlist)
         views.setInt(R.id.widget_playlist_progress_fill, "setImageLevel", level)
+        views.setWidgetTimes(
+            R.id.widget_playlist_time_elapsed,
+            R.id.widget_playlist_time_remaining,
+            duration,
+            currentPosition,
+        )
         appWidgetManager.partiallyUpdateAppWidget(widgetIds, views)
     }
 
@@ -292,6 +298,12 @@ class PlaylistWidgetManager @Inject constructor(
             0
         }
         views.setInt(R.id.widget_playlist_progress_fill, "setImageLevel", progressLevel)
+        views.setWidgetTimes(
+            R.id.widget_playlist_time_elapsed,
+            R.id.widget_playlist_time_remaining,
+            duration,
+            currentPosition,
+        )
 
         views.setOnClickPendingIntent(R.id.widget_playlist_album_art, getOpenAppIntent())
         views.setOnClickPendingIntent(

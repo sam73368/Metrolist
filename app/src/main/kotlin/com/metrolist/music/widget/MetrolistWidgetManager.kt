@@ -142,6 +142,7 @@ class MetrolistWidgetManager @Inject constructor(
             }
             val views = RemoteViews(context.packageName, R.layout.widget_music_player)
             views.setInt(R.id.widget_progress_fill, "setImageLevel", level)
+            views.setWidgetTimes(R.id.widget_time_elapsed, R.id.widget_time_remaining, duration, currentPosition)
             appWidgetManager.partiallyUpdateAppWidget(widgetIds, views)
         }
 
@@ -219,6 +220,7 @@ class MetrolistWidgetManager @Inject constructor(
         } else {
             views.setInt(R.id.widget_progress_fill, "setImageLevel", 0)
         }
+        views.setWidgetTimes(R.id.widget_time_elapsed, R.id.widget_time_remaining, duration, currentPosition)
 
         // Set click intents
         views.setOnClickPendingIntent(R.id.widget_album_art, getOpenAppIntent())
