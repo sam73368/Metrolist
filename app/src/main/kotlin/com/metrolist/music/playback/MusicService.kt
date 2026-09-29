@@ -109,6 +109,7 @@ import com.metrolist.music.constants.AudioOffload
 import com.metrolist.music.constants.AudioQualityKey
 import com.metrolist.music.constants.AudioTrackPlaybackParamsKey
 import com.metrolist.music.constants.AutoDownloadOnLikeKey
+import com.metrolist.music.constants.BluetoothAutoPlayDevicesKey
 import com.metrolist.music.constants.AutoLoadMoreKey
 import com.metrolist.music.constants.AutoSkipNextOnErrorKey
 import com.metrolist.music.constants.AutoplayKey
@@ -162,6 +163,7 @@ import com.metrolist.music.constants.ScrobbleMinSongDurationKey
 import com.metrolist.music.constants.ShowLyricsKey
 import com.metrolist.music.constants.ShuffleModeKey
 import com.metrolist.music.constants.ShufflePlaylistFirstKey
+import com.metrolist.music.constants.SongSortType
 import com.metrolist.music.constants.SimilarContent
 import com.metrolist.music.constants.SkipSilenceInstantKey
 import com.metrolist.music.constants.SkipSilenceKey
@@ -586,10 +588,14 @@ class MusicService :
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
                 super.onAudioDevicesAdded(addedDevices)
+                val allowedDevices = parseBluetoothDevices(dataStore.get(BluetoothAutoPlayDevicesKey, ""))
                 val hasBluetooth =
                     addedDevices?.any {
-                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                        (it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) &&
+                            // AudioDeviceInfo.address exists from Android 9; older versions accept every device.
+                            (allowedDevices.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
+                                it.address in allowedDevices)
                     } == true
 
                 if (hasBluetooth) {
@@ -4381,6 +4387,17 @@ class MusicService :
                 handleAlarmTrigger(intent)
             }
 
+            ACTION_BLUETOOTH_AUTOPLAY -> {
+                handleBluetoothAutoPlay()
+            }
+
+            ACTION_PLAY_LIKED_SHUFFLED -> {
+                scope.launch {
+                    playerInitialized.first { it }
+                    playLikedShuffled()
+                }
+            }
+
             MusicWidgetReceiver.ACTION_PLAY_PAUSE -> {
                 if (player.isPlaying) player.pause() else player.play()
                 updateWidgetUI(player.isPlaying)
@@ -4517,6 +4534,39 @@ class MusicService :
 
             else -> null
         }
+    }
+
+    /**
+     * Resumes the current (or restored) queue when a Bluetooth audio device connects,
+     * or starts the liked songs if there is nothing to resume.
+     */
+    private fun handleBluetoothAutoPlay() {
+        scope.launch {
+            playerInitialized.first { it }
+            if (player.isPlaying) return@launch
+            // The persisted queue is restored asynchronously right after the player is ready.
+            if (player.mediaItemCount == 0) delay(BLUETOOTH_QUEUE_RESTORE_WAIT_MS)
+            if (player.isPlaying) return@launch
+
+            if (player.mediaItemCount > 0) {
+                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                player.play()
+            } else {
+                playLikedShuffled()
+            }
+        }
+    }
+
+    private suspend fun playLikedShuffled() {
+        val liked = withContext(Dispatchers.IO) {
+            database.likedSongs(SongSortType.CREATE_DATE, descending = true).first()
+        }
+        if (liked.isEmpty()) return
+        val items = liked.shuffled().map { it.toMediaItem() }
+        playQueue(
+            ListQueue(title = getString(R.string.liked), items = items),
+            playWhenReady = true,
+        )
     }
 
     private fun handleAlarmTrigger(intent: Intent) {
@@ -4983,6 +5033,8 @@ class MusicService :
 
     companion object {
         const val ACTION_ALARM_TRIGGER = "com.metrolist.music.action.ALARM_TRIGGER"
+        const val ACTION_BLUETOOTH_AUTOPLAY = "com.metrolist.music.action.BLUETOOTH_AUTOPLAY"
+        const val ACTION_PLAY_LIKED_SHUFFLED = "com.metrolist.music.action.PLAY_LIKED_SHUFFLED"
         const val EXTRA_ALARM_ID = "extra_alarm_id"
         const val EXTRA_ALARM_PLAYLIST_ID = "extra_alarm_playlist_id"
         const val EXTRA_ALARM_RANDOM_SONG = "extra_alarm_random_song"
@@ -4994,6 +5046,7 @@ class MusicService :
         const val PLAYLIST = "playlist"
         const val YOUTUBE_PLAYLIST = "youtube_playlist"
         const val SEARCH = "search"
+        const val RECENT = "recent"
         const val SHUFFLE_ACTION = "__shuffle__"
 
         const val CHANNEL_ID = "music_channel_01"
@@ -5004,6 +5057,7 @@ class MusicService :
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5
+        private const val BLUETOOTH_QUEUE_RESTORE_WAIT_MS = 1_500L
         const val MAX_RETRY_COUNT = 10
 
         private const val INITIAL_BUFFER_RECOVERY_DELAY_MS = 15_000L

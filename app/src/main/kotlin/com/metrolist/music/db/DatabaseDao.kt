@@ -198,6 +198,18 @@ interface DatabaseDao {
     suspend fun likedSongsByCreateDateDesc(limit: Int, offset: Int): List<Song>
 
     @Transaction
+    @Query(
+        """
+        SELECT song.* FROM song
+        JOIN (SELECT songId, MAX(id) AS lastEventId FROM event GROUP BY songId) AS recent
+            ON recent.songId = song.id
+        ORDER BY recent.lastEventId DESC
+        LIMIT :limit OFFSET :offset
+        """,
+    )
+    suspend fun recentlyPlayedSongs(limit: Int, offset: Int): List<Song>
+
+    @Transaction
     @Query("SELECT * FROM song WHERE liked ORDER BY title")
     fun likedSongsByNameAsc(): Flow<List<Song>>
 

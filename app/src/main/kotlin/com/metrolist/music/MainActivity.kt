@@ -999,12 +999,14 @@ class MainActivity : FragmentActivity() {
                         handleWidgetTargetIntent(pendingIntent!!, navController)
                         handleRecognitionIntent(pendingIntent!!, navController)
                         handleVoiceSearchIntent(pendingIntent!!)
+                        handlePlayLikedIntent(pendingIntent!!)
                         handleDeepLinkIntent(pendingIntent!!, navController)
                         pendingIntent = null
                     } else {
                         handleWidgetTargetIntent(intent, navController)
                         handleRecognitionIntent(intent, navController)
                         handleVoiceSearchIntent(intent)
+                        handlePlayLikedIntent(intent)
                         handleDeepLinkIntent(intent, navController)
                     }
                 }
@@ -1015,6 +1017,7 @@ class MainActivity : FragmentActivity() {
                             handleWidgetTargetIntent(intent, navController)
                             handleRecognitionIntent(intent, navController)
                             handleVoiceSearchIntent(intent)
+                            handlePlayLikedIntent(intent)
                             handleDeepLinkIntent(intent, navController)
                         }
 
@@ -1616,6 +1619,16 @@ class MainActivity : FragmentActivity() {
                 controller.play()
             },
             ContextCompat.getMainExecutor(this),
+        )
+    }
+
+    /** Quick Settings tile / app shortcut "Shuffle liked songs". */
+    private fun handlePlayLikedIntent(intent: Intent) {
+        if (intent.action != MusicService.ACTION_PLAY_LIKED_SHUFFLED) return
+        intent.action = null
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, MusicService::class.java).setAction(MusicService.ACTION_PLAY_LIKED_SHUFFLED),
         )
     }
 

@@ -66,6 +66,8 @@ enum class AndroidAutoSection(val id: String) {
     ARTISTS("artists"),
     ALBUMS("albums"),
     PLAYLISTS("playlists"),
+    RECENT("recent"),
+    DOWNLOADED("downloaded"),
 }
 
 @Composable
@@ -75,6 +77,8 @@ fun AndroidAutoSection.label(): String = when (this) {
     AndroidAutoSection.ARTISTS -> stringResource(R.string.artists)
     AndroidAutoSection.ALBUMS -> stringResource(R.string.albums)
     AndroidAutoSection.PLAYLISTS -> stringResource(R.string.playlists)
+    AndroidAutoSection.RECENT -> stringResource(R.string.recently_played)
+    AndroidAutoSection.DOWNLOADED -> stringResource(R.string.downloaded_songs)
 }
 
 fun serializeSections(sections: List<Pair<AndroidAutoSection, Boolean>>): String =
@@ -82,13 +86,16 @@ fun serializeSections(sections: List<Pair<AndroidAutoSection, Boolean>>): String
 
 fun deserializeSections(raw: String): List<Pair<AndroidAutoSection, Boolean>> {
     if (raw.isBlank()) return AndroidAutoSection.values().map { it to true }
-    return raw.split(",").mapNotNull { token ->
+    val saved = raw.split(",").mapNotNull { token ->
         val parts = token.split(":")
         if (parts.size != 2) return@mapNotNull null
         val section = AndroidAutoSection.values().find { it.id == parts[0] } ?: return@mapNotNull null
         val enabled = parts[1].toBooleanStrictOrNull() ?: true
         section to enabled
-    }
+    }.distinctBy { it.first }
+    // Sections added after the order was saved are appended, enabled.
+    val missing = AndroidAutoSection.values().filter { section -> saved.none { it.first == section } }
+    return saved + missing.map { it to true }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

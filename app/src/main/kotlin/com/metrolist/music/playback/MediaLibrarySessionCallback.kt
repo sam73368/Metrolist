@@ -239,6 +239,20 @@ constructor(
                                         drawableUri(R.drawable.queue_music),
                                         MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
                                     )
+                                    AndroidAutoSection.RECENT -> browsableMediaItem(
+                                        MusicService.RECENT,
+                                        context.getString(R.string.recently_played),
+                                        null,
+                                        drawableUri(R.drawable.history),
+                                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                                    )
+                                    AndroidAutoSection.DOWNLOADED -> browsableMediaItem(
+                                        "${MusicService.PLAYLIST}/${PlaylistEntity.DOWNLOADED_PLAYLIST_ID}",
+                                        context.getString(R.string.downloaded_songs),
+                                        null,
+                                        drawableUri(R.drawable.download),
+                                        MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                                    )
                                 }
                             }
                         if (showYoutubePlaylists) {
@@ -258,28 +272,12 @@ constructor(
                             emptyList()
                         } else {
                             try {
-                                val allSections = mutableListOf<com.metrolist.innertube.pages.HomePage.Section>()
-                                var continuation: String? = null
-                                val maxPages = 4
-
-                                for (page in 0 until maxPages) {
-                                    val result = YouTube.home(continuation)
-                                        .onFailure { reportException(it) }
-                                        .getOrNull() ?: break
-                                    allSections.addAll(result.sections)
-                                    continuation = result.continuation
-                                    if (continuation == null) break
-                                }
-
                                 // Drop playlists already saved to the local library,
                                 // which are exposed under MusicService.PLAYLIST.
                                 val savedBrowseIds = database.bookmarkedPlaylistBrowseIds().toSet()
 
-                                val playlists = allSections
-                                    .flatMap { it.items }
-                                    .filterIsInstance<PlaylistItem>()
+                                val playlists = homePlaylists()
                                     .filterNot { it.id in savedBrowseIds }
-                                    .distinctBy { it.id }
 
                                 playlists.map { playlist ->
                                     browsableMediaItem(
@@ -357,6 +355,40 @@ constructor(
             }
         }
 
+    @Volatile
+    private var cachedHomePlaylists: Pair<Long, List<PlaylistItem>>? = null
+
+    /**
+     * Playlists from the YouTube Music home feed. Loading them takes up to 4 network requests,
+     * so they are kept for a few minutes: Android Auto asks for them again every time the
+     * "Mixes" folder is opened or scrolled.
+     */
+    private suspend fun homePlaylists(): List<PlaylistItem> {
+        cachedHomePlaylists?.let { (loadedAt, playlists) ->
+            if (System.currentTimeMillis() - loadedAt < HOME_PLAYLISTS_CACHE_MS) return playlists
+        }
+
+        val allSections = mutableListOf<com.metrolist.innertube.pages.HomePage.Section>()
+        var continuation: String? = null
+        for (page in 0 until HOME_PLAYLISTS_MAX_PAGES) {
+            val result = YouTube.home(continuation)
+                .onFailure { reportException(it) }
+                .getOrNull() ?: break
+            allSections.addAll(result.sections)
+            continuation = result.continuation
+            if (continuation == null) break
+        }
+
+        val playlists = allSections
+            .flatMap { it.items }
+            .filterIsInstance<PlaylistItem>()
+            .distinctBy { it.id }
+        if (playlists.isNotEmpty()) {
+            cachedHomePlaylists = System.currentTimeMillis() to playlists
+        }
+        return playlists
+    }
+
     private suspend fun loadLocalChildren(
         parentId: String,
         page: Int,
@@ -397,6 +429,10 @@ constructor(
 
             parentId == MusicService.SONG ->
                 database.songsByCreateDateAsc(request.limit, request.offset)
+                    .map { it.toMediaItem(parentId) }
+
+            parentId == MusicService.RECENT ->
+                database.recentlyPlayedSongs(request.limit, request.offset)
                     .map { it.toMediaItem(parentId) }
 
             parentId.startsWith("${MusicService.ARTIST}/") ->
@@ -666,6 +702,16 @@ constructor(
                         allSongs.map { it.toMediaItem() },
                         allSongs.indexOfFirst { it.id == songId }.takeIf { it != -1 } ?: 0,
                         startPositionMs
+                    )
+                }
+
+                MusicService.RECENT -> {
+                    val songId = path.getOrNull(1) ?: return@future defaultResult
+                    val songs = database.recentlyPlayedSongs(RECENT_QUEUE_SIZE, 0)
+                    MediaItemsWithStartPosition(
+                        songs.map { it.toMediaItem() },
+                        songs.indexOfFirst { it.id == songId }.coerceAtLeast(0),
+                        startPositionMs,
                     )
                 }
 
@@ -1138,6 +1184,7 @@ internal fun isBrowsableMediaId(mediaId: String): Boolean =
         mediaId == MusicService.ALBUM ||
         mediaId == MusicService.PLAYLIST ||
         mediaId == MusicService.YOUTUBE_PLAYLIST ||
+        mediaId == MusicService.RECENT ||
         mediaId.startsWith("${MusicService.ARTIST}/") ||
         mediaId.startsWith("${MusicService.ALBUM}/") ||
         mediaId.startsWith("${MusicService.PLAYLIST}/") ||
@@ -1155,6 +1202,9 @@ internal fun <T> List<T>.paginate(
 internal const val MAX_ANDROID_AUTO_PAGE_SIZE = 500
 
 private const val VOICE_TAG = "VoiceSearch"
+private const val RECENT_QUEUE_SIZE = 200
+private const val HOME_PLAYLISTS_CACHE_MS = 10 * 60 * 1000L
+private const val HOME_PLAYLISTS_MAX_PAGES = 4
 
 internal data class AndroidAutoPageRequest(
     val offset: Int,

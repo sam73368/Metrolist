@@ -42,6 +42,14 @@ import com.metrolist.music.utils.enumPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import androidx.media3.exoplayer.scheduler.Requirements
+import com.metrolist.music.constants.DownloadOnWifiOnlyKey
+import com.metrolist.music.constants.DownloadWhileChargingOnlyKey
+import com.metrolist.music.constants.SongSortType
+import com.metrolist.music.utils.dataStore
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
@@ -309,6 +317,36 @@ constructor(
         }
     }
 
+    init {
+        scope.launch {
+            context.dataStore.data
+                .map { prefs ->
+                    downloadRequirements(
+                        wifiOnly = prefs[DownloadOnWifiOnlyKey] ?: false,
+                        chargingOnly = prefs[DownloadWhileChargingOnlyKey] ?: false,
+                    )
+                }.distinctUntilChanged()
+                .collect { flags ->
+                    // DownloadManager must be used from the thread it was created on.
+                    withContext(Dispatchers.Main) {
+                        downloadManager.requirements = Requirements(flags)
+                    }
+                }
+        }
+    }
+
+    /**
+     * Queues every liked song that is not downloaded yet.
+     * Downloads wait for Wi-Fi / charging when those settings are on.
+     * Returns the number of songs queued.
+     */
+    suspend fun downloadAllLiked(): Int {
+        val liked = database.likedSongs(SongSortType.CREATE_DATE, descending = true).first()
+        val toDownload = liked.filter { shouldPrepareDownload(downloads.value[it.id]?.state) }
+        toDownload.forEach { download(it) }
+        return toDownload.size
+    }
+
     fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
     fun download(song: Song) = download(song.toMediaMetadata())
@@ -410,6 +448,11 @@ constructor(
         }
         return false
     }
+}
+
+internal fun downloadRequirements(wifiOnly: Boolean, chargingOnly: Boolean): Int {
+    val network = if (wifiOnly) Requirements.NETWORK_UNMETERED else Requirements.NETWORK
+    return if (chargingOnly) network or Requirements.DEVICE_CHARGING else network
 }
 
 internal fun shouldPrepareDownload(downloadState: Int?): Boolean = downloadState != Download.STATE_COMPLETED

@@ -13,6 +13,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Microphone feature for music recognition (not required) -->
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -250,6 +254,13 @@
             </intent-filter>
         </service>
 
+        <!-- Lets downloads waiting for network / Wi-Fi / charging resume on their own
+             (ExoDownloadService uses PlatformScheduler). -->
+        <service
+            android:name="androidx.media3.exoplayer.scheduler.PlatformScheduler$PlatformSchedulerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <service
             android:name=".playback.ExoDownloadService"
             android:exported="false"
@@ -269,6 +280,15 @@
             android:name=".playback.alarm.MusicAlarmReceiver"
             android:enabled="true"
             android:exported="false" />
+
+        <receiver
+            android:name=".playback.BluetoothAutoPlayReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".playback.alarm.MusicAlarmRescheduleReceiver"
@@ -370,6 +390,18 @@
             android:name=".recognition.RecognitionForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Shuffle liked songs Quick Settings Tile -->
+        <service
+            android:name=".quicksettings.PlayLikedTileService"
+            android:label="@string/qs_tile_shuffle_liked"
+            android:icon="@drawable/shuffle"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Music Recognizer Quick Settings Tile -->
         <service

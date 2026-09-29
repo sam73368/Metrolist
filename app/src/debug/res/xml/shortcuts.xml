@@ -21,4 +21,14 @@
             android:targetClass="com.metrolist.music.MainActivity"
             android:targetPackage="com.metrolist.music.debug" />
     </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/shortcut_shuffle"
+        android:shortcutId="shuffle_liked"
+        android:shortcutShortLabel="@string/qs_tile_shuffle_liked">
+        <intent
+            android:action="com.metrolist.music.action.PLAY_LIKED_SHUFFLED"
+            android:targetClass="com.metrolist.music.MainActivity"
+            android:targetPackage="com.metrolist.music.debug" />
+    </shortcut>
 </shortcuts>

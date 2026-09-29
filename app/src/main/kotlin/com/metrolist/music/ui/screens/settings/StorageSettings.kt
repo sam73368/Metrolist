@@ -18,6 +18,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import android.widget.Toast
+import com.metrolist.music.LocalDownloadUtil
+import com.metrolist.music.constants.DownloadOnWifiOnlyKey
+import com.metrolist.music.constants.DownloadWhileChargingOnlyKey
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +100,15 @@ fun StorageSettings(
     val (enableSongCache, onEnableSongCacheChange) = rememberPreference(
         key = EnableSongCacheKey,
         defaultValue = true
+    )
+    val downloadUtil = LocalDownloadUtil.current
+    val (downloadOnWifiOnly, onDownloadOnWifiOnlyChange) = rememberPreference(
+        key = DownloadOnWifiOnlyKey,
+        defaultValue = false
+    )
+    val (downloadWhileChargingOnly, onDownloadWhileChargingOnlyChange) = rememberPreference(
+        key = DownloadWhileChargingOnlyKey,
+        defaultValue = false
     )
 
     var clearDownloads by remember { mutableStateOf(false) }
@@ -306,6 +320,69 @@ fun StorageSettings(
                         description = {
                             Text(text = Formatter.formatShortFileSize(context, downloadCacheSize))
                         },
+                    ),
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.favorite),
+                        title = { Text(stringResource(R.string.download_all_liked)) },
+                        description = { Text(stringResource(R.string.download_all_liked_desc)) },
+                        onClick = {
+                            coroutineScope.launch {
+                                val queued = withContext(Dispatchers.IO) { downloadUtil.downloadAllLiked() }
+                                val message =
+                                    if (queued == 0) {
+                                        context.getString(R.string.download_all_liked_none)
+                                    } else {
+                                        context.resources.getQuantityString(
+                                            R.plurals.download_all_liked_started,
+                                            queued,
+                                            queued,
+                                        )
+                                    }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    ),
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.wifi_proxy),
+                        title = { Text(stringResource(R.string.download_wifi_only)) },
+                        description = { Text(stringResource(R.string.download_wifi_only_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = downloadOnWifiOnly,
+                                onCheckedChange = onDownloadOnWifiOnlyChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (downloadOnWifiOnly) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onDownloadOnWifiOnlyChange(!downloadOnWifiOnly) },
+                    ),
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.battery_charging),
+                        title = { Text(stringResource(R.string.download_charging_only)) },
+                        description = { Text(stringResource(R.string.download_charging_only_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = downloadWhileChargingOnly,
+                                onCheckedChange = onDownloadWhileChargingOnlyChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (downloadWhileChargingOnly) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onDownloadWhileChargingOnlyChange(!downloadWhileChargingOnly) },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.clear_all),

@@ -5,6 +5,28 @@
 
 package com.metrolist.music.ui.screens.settings
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.metrolist.music.constants.BluetoothAutoPlayDevicesKey
+import com.metrolist.music.playback.parseBluetoothDevices
+import com.metrolist.music.playback.serializeBluetoothDevices
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -222,6 +244,40 @@ fun PlayerSettings(
         HistoryDuration,
         defaultValue = 30f
     )
+
+    val context = LocalContext.current
+    val (bluetoothDevicesRaw, onBluetoothDevicesRawChange) = rememberPreference(
+        BluetoothAutoPlayDevicesKey,
+        defaultValue = ""
+    )
+    val bluetoothDevices = remember(bluetoothDevicesRaw) { parseBluetoothDevices(bluetoothDevicesRaw) }
+    var showBluetoothDevicesDialog by remember { mutableStateOf(false) }
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> onResumeOnBluetoothConnectChange(granted) }
+
+    fun setBluetoothAutoPlay(enabled: Boolean) {
+        // Android 12+ only delivers Bluetooth connection events with BLUETOOTH_CONNECT.
+        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            onResumeOnBluetoothConnectChange(enabled)
+        }
+    }
+
+    if (showBluetoothDevicesDialog) {
+        BluetoothDevicesDialog(
+            selected = bluetoothDevices,
+            onDismiss = { showBluetoothDevicesDialog = false },
+            onConfirm = {
+                onBluetoothDevicesRawChange(serializeBluetoothDevices(it))
+                showBluetoothDevicesDialog = false
+            },
+        )
+    }
 
     var showAudioQualityDialog by remember {
         mutableStateOf(false)
@@ -1005,7 +1061,7 @@ fun PlayerSettings(
 
         Material3SettingsGroup(
             title = stringResource(R.string.misc),
-            items = listOf(
+            items = listOfNotNull(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.clear_all),
                     title = { Text(stringResource(R.string.stop_music_on_task_clear)) },
@@ -1052,7 +1108,7 @@ fun PlayerSettings(
                     trailingContent = {
                         Switch(
                             checked = resumeOnBluetoothConnect,
-                            onCheckedChange = onResumeOnBluetoothConnectChange,
+                            onCheckedChange = ::setBluetoothAutoPlay,
                             thumbContent = {
                                 Icon(
                                     painter = painterResource(
@@ -1064,8 +1120,30 @@ fun PlayerSettings(
                             }
                         )
                     },
-                    onClick = { onResumeOnBluetoothConnectChange(!resumeOnBluetoothConnect) }
+                    onClick = { setBluetoothAutoPlay(!resumeOnBluetoothConnect) }
                 ),
+                if (resumeOnBluetoothConnect) {
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.bluetooth),
+                        title = { Text(stringResource(R.string.bluetooth_autoplay_devices)) },
+                        description = {
+                            Text(
+                                if (bluetoothDevices.isEmpty()) {
+                                    stringResource(R.string.bluetooth_autoplay_all_devices)
+                                } else {
+                                    pluralStringResource(
+                                        R.plurals.bluetooth_autoplay_n_devices,
+                                        bluetoothDevices.size,
+                                        bluetoothDevices.size,
+                                    )
+                                },
+                            )
+                        },
+                        onClick = { showBluetoothDevicesDialog = true },
+                    )
+                } else {
+                    null
+                },
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.screenshot),
                     title = { Text(stringResource(R.string.keep_screen_on_when_player_is_expanded)) },
@@ -1106,3 +1184,64 @@ fun PlayerSettings(
         }
     )
 }
+
+private data class BondedDevice(val address: String, val name: String)
+
+@SuppressLint("MissingPermission")
+private fun bondedDevices(context: Context): List<BondedDevice> =
+    runCatching {
+        context.getSystemService(BluetoothManager::class.java)?.adapter?.bondedDevices.orEmpty()
+            .map { BondedDevice(it.address, it.name ?: it.address) }
+            .sortedBy { it.name.lowercase() }
+    }.getOrDefault(emptyList())
+
+/** Chooses which paired devices start playback. Nothing checked means every device. */
+@Composable
+private fun BluetoothDevicesDialog(
+    selected: Set<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val devices = remember { bondedDevices(context) }
+    var checked by remember { mutableStateOf(selected) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.bluetooth_autoplay_devices)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = stringResource(R.string.bluetooth_autoplay_devices_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                if (devices.isEmpty()) {
+                    Text(stringResource(R.string.bluetooth_autoplay_no_paired_devices))
+                }
+                devices.forEach { device ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                checked = if (device.address in checked) checked - device.address
+                                else checked + device.address
+                            },
+                    ) {
+                        Checkbox(checked = device.address in checked, onCheckedChange = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(device.name)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(checked) }) { Text(stringResource(android.R.string.ok)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+    )
+}
+

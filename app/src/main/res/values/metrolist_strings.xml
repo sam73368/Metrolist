@@ -996,4 +996,30 @@
     <string name="voice_no_result">No result for “%1$s”</string>
     <string name="voice_offline_no_result">Offline: no downloaded song matches “%1$s”</string>
     <string name="voice_nothing_to_play">Nothing to play in your library</string>
+
+    <!-- Android Auto -->
+    <string name="recently_played">Recently played</string>
+    <string name="bluetooth_autoplay_devices">Bluetooth devices</string>
+    <string name="bluetooth_autoplay_all_devices">All devices</string>
+    <plurals name="bluetooth_autoplay_n_devices">
+        <item quantity="one">%d device</item>
+        <item quantity="other">%d devices</item>
+    </plurals>
+    <string name="bluetooth_autoplay_devices_hint">Music starts when one of these devices connects. Leave everything unchecked to use all devices.</string>
+    <string name="bluetooth_autoplay_no_paired_devices">No paired device found</string>
+
+    <!-- Downloads -->
+    <string name="download_all_liked">Download all liked songs</string>
+    <string name="download_all_liked_desc">Keep your liked songs available offline</string>
+    <string name="download_all_liked_none">All your liked songs are already downloaded</string>
+    <plurals name="download_all_liked_started">
+        <item quantity="one">%d song added to downloads</item>
+        <item quantity="other">%d songs added to downloads</item>
+    </plurals>
+    <string name="download_wifi_only">Download on Wi-Fi only</string>
+    <string name="download_wifi_only_desc">Downloads wait for an unmetered network</string>
+    <string name="download_charging_only">Download while charging only</string>
+    <string name="download_charging_only_desc">Downloads wait until the phone is charging</string>
+
+    <string name="qs_tile_shuffle_liked">Shuffle liked songs</string>
 </resources>
