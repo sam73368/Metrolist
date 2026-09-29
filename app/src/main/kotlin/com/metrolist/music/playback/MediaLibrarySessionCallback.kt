@@ -638,13 +638,19 @@ constructor(
     ): ListenableFuture<MediaItemsWithStartPosition> =
         scope.future(Dispatchers.IO) {
             val defaultResult = MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
-            val voiceQuery = mediaItems.firstOrNull()?.requestMetadata?.searchQuery
+            val firstItem = mediaItems.firstOrNull() ?: return@future defaultResult
+            val voiceQuery = firstItem.requestMetadata.searchQuery?.trim()
+
+            // "Hey Google, play music on Metrolist": a voice request with no query and no media id.
+            if (voiceQuery.isNullOrBlank() && firstItem.mediaId.isBlank()) {
+                return@future playAnything() ?: defaultResult
+            }
 
             val path = if (!voiceQuery.isNullOrBlank()) {
                 listOf(MusicService.SEARCH, voiceQuery, "")
             } else {
-                mediaItems.firstOrNull()?.mediaId?.split("/")
-            } ?: return@future defaultResult
+                parseMediaIdPath(firstItem.mediaId)
+            }
 
             when (path.firstOrNull()) {
                 MusicService.SONG -> {
@@ -821,9 +827,12 @@ constructor(
 
                     val selectedSong =
                         if (isVoiceSearch) {    //Check if the voiceQuery is about a specific song
-                            val snapshot: List<Song> =
-                                synchronized(searchResults) { searchResults.toList() }
-                            VoiceSearchMatcher.findBest(searchQuery, snapshot)
+                            // No strong title match (e.g. the query is only an artist name, or the
+                            // title is worded differently): fall back to YouTube's top result, then
+                            // to the best local hit, instead of playing nothing.
+                            VoiceSearchMatcher.findBest(searchQuery, searchResults)
+                                ?: searchResults.getOrNull(allLocalSongs.size)
+                                ?: searchResults.firstOrNull()
                         } else {
                             searchResults.firstOrNull { it.id == songId }
                         }
@@ -840,12 +849,18 @@ constructor(
                         }.getOrNull()
 
                         if (radioStatus != null && radioStatus.items.isNotEmpty()) {
+                            // Make sure the requested song is the one that starts, even if the radio
+                            // (or the explicit/video filters) left it out of the initial items.
+                            val selectedIndex = radioStatus.items.indexOfFirst { it.mediaId == selectedSong.id }
+                            val radioItems =
+                                if (selectedIndex == -1) listOf(selectedSong.toMediaItem()) + radioStatus.items
+                                else radioStatus.items
                             withContext(Dispatchers.Main) {
-                                service.adoptQueue(radioQueue, radioStatus.title, radioStatus.items.size) //Used to make the radio queue load more songs when near the end
+                                service.adoptQueue(radioQueue, radioStatus.title, radioItems.size) //Used to make the radio queue load more songs when near the end
                             }
                             return@future MediaItemsWithStartPosition(
-                                radioStatus.items,
-                                radioStatus.items.indexOfFirst { it.mediaId == selectedSong.id }.coerceAtLeast(0),
+                                radioItems,
+                                selectedIndex.coerceAtLeast(0),
                                 C.TIME_UNSET,
                             )
                         }
@@ -871,6 +886,22 @@ constructor(
                 else -> defaultResult
             }
         }
+
+    /**
+     * Plays something when the user asks for "music" without saying what:
+     * liked songs, or the whole library if nothing is liked, shuffled.
+     */
+    private suspend fun playAnything(): MediaItemsWithStartPosition? {
+        val liked = database.likedSongs(SongSortType.CREATE_DATE, descending = true).first()
+        val songs = liked.ifEmpty { database.songsByCreateDateAsc().first() }
+        if (songs.isEmpty()) return null
+        val title = if (liked.isNotEmpty()) context.getString(R.string.liked) else null
+        val items = songs.shuffled().map { it.toMediaItem() }
+        withContext(Dispatchers.Main) {
+            service.adoptQueue(ListQueue(title = title, items = items), title = title)
+        }
+        return MediaItemsWithStartPosition(items, 0, C.TIME_UNSET)
+    }
 
     private fun drawableUri(
         @DrawableRes id: Int,
@@ -925,6 +956,17 @@ constructor(
                     .build(),
             ).build()
     }
+}
+
+/**
+ * Splits a media id into its path segments. Search ids are "search/<query>/<songId>" and the
+ * query itself may contain "/" (e.g. "AC/DC"), so for them everything between the first and
+ * the last segment is kept together as the query.
+ */
+internal fun parseMediaIdPath(mediaId: String): List<String> {
+    val parts = mediaId.split("/")
+    if (parts.firstOrNull() != MusicService.SEARCH || parts.size <= 3) return parts
+    return listOf(parts.first(), parts.subList(1, parts.size - 1).joinToString("/"), parts.last())
 }
 
 internal fun isBrowsableMediaId(mediaId: String): Boolean =

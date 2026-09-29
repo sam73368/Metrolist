@@ -144,6 +144,14 @@
                 <data android:scheme="vnd.youtube.launch" />
             </intent-filter>
 
+            <!-- Voice search filter ("Hey Google, play X on Metrolist").
+                 The intent carries no data URI, so it only matches a filter without <data>. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
             <!-- Share filter -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

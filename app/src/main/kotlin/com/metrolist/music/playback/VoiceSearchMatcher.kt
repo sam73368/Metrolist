@@ -1,10 +1,12 @@
 package com.metrolist.music.playback
 
 import com.metrolist.music.db.entities.Song
+import java.text.Normalizer
 
 object VoiceSearchMatcher {
     const val STRONG_MATCH_THRESHOLD = 0.60
     private val PUNCTUATION_REGEX = Regex("[^\\p{L}\\p{N}\\s]")
+    private val DIACRITICS_REGEX = Regex("\\p{Mn}+")
     const val FUZZY_THRESHOLD = 0.85
 
     data class ScoredSong(
@@ -81,11 +83,15 @@ object VoiceSearchMatcher {
     }
 
 
+    /** Accents are ignored so that "desenchantee" still matches "Désenchantée". */
     internal fun tokenize(text: String): Set<String> =
-        PUNCTUATION_REGEX.replace(text.lowercase(), " ")
+        PUNCTUATION_REGEX.replace(stripAccents(text.lowercase()), " ")
             .split(" ")
             .filter { it.isNotBlank() }
             .toSet()
+
+    internal fun stripAccents(text: String): String =
+        DIACRITICS_REGEX.replace(Normalizer.normalize(text, Normalizer.Form.NFD), "")
 
     /**
      * Token Similarity based on Jaro-Winkler Distance Algorithm

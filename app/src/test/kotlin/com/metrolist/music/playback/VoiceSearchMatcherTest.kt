@@ -133,4 +133,14 @@ class VoiceSearchMatcherTest {
         )
         assertEquals("not-first: correct winner", "Bohemian Rhapsody", best?.title)
     }
+
+    @Test
+    fun `accents are ignored`() {
+        val best = VoiceSearchMatcher.findBest(
+            "desenchantee",
+            listOf(song("Désenchantée", "Mylène Farmer"), song("Autre Chanson", "Quelqu'un")),
+        )
+        assertEquals("accents: correct winner", "Désenchantée", best?.title)
+        assertEquals("accents: stripped", "eeca", VoiceSearchMatcher.stripAccents("éèçà"))
+    }
 }

@@ -78,4 +78,20 @@ class MediaLibrarySessionCallbackTest {
             androidAutoPageRequest(page = 2, pageSize = 1).afterLeadingItems(2),
         )
     }
+
+    @Test
+    fun `search media ids keep slashes inside the query`() {
+        assertEquals(
+            listOf(MusicService.SEARCH, "AC/DC", "song-id"),
+            parseMediaIdPath("${MusicService.SEARCH}/AC/DC/song-id"),
+        )
+        assertEquals(
+            listOf(MusicService.SEARCH, "hello", "song-id"),
+            parseMediaIdPath("${MusicService.SEARCH}/hello/song-id"),
+        )
+        assertEquals(
+            listOf(MusicService.ALBUM, "album-id", "song-id"),
+            parseMediaIdPath("${MusicService.ALBUM}/album-id/song-id"),
+        )
+    }
 }

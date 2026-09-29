@@ -9,6 +9,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.PendingIntent
+import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
@@ -16,6 +17,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.MediaStore
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -118,6 +120,8 @@ import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -991,11 +995,13 @@ class MainActivity : FragmentActivity() {
                     if (pendingIntent != null) {
                         handleWidgetTargetIntent(pendingIntent!!, navController)
                         handleRecognitionIntent(pendingIntent!!, navController)
+                        handleVoiceSearchIntent(pendingIntent!!)
                         handleDeepLinkIntent(pendingIntent!!, navController)
                         pendingIntent = null
                     } else {
                         handleWidgetTargetIntent(intent, navController)
                         handleRecognitionIntent(intent, navController)
+                        handleVoiceSearchIntent(intent)
                         handleDeepLinkIntent(intent, navController)
                     }
                 }
@@ -1005,6 +1011,7 @@ class MainActivity : FragmentActivity() {
                         Consumer<Intent> { intent ->
                             handleWidgetTargetIntent(intent, navController)
                             handleRecognitionIntent(intent, navController)
+                            handleVoiceSearchIntent(intent)
                             handleDeepLinkIntent(intent, navController)
                         }
 
@@ -1543,6 +1550,62 @@ class MainActivity : FragmentActivity() {
         navController.navigate(if (autoStart) "recognition?autoStart=true" else "recognition") {
             launchSingleTop = true
         }
+    }
+
+    /**
+     * Handles MEDIA_PLAY_FROM_SEARCH ("Hey Google, play X on Metrolist").
+     * The query is forwarded to MusicService through a MediaController, so it goes through the
+     * same resolution logic as Android Auto voice search (MediaLibrarySessionCallback.onSetMediaItems).
+     * An empty query means "play some music".
+     */
+    private fun handleVoiceSearchIntent(intent: Intent) {
+        if (intent.action != MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
+        val query = intent.getStringExtra(SearchManager.QUERY).orEmpty().trim()
+        val extras = intent.extras?.let { Bundle(it) } ?: Bundle()
+        intent.action = null
+
+        val controllerFuture =
+            MediaController
+                .Builder(this, SessionToken(this, ComponentName(this, MusicService::class.java)))
+                .buildAsync()
+        controllerFuture.addListener(
+            {
+                val controller =
+                    runCatching { controllerFuture.get() }.getOrElse {
+                        reportException(it)
+                        return@addListener
+                    }
+                val release = Runnable { controller.release() }
+                controller.addListener(
+                    object : Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (isPlaying) {
+                                window.decorView.removeCallbacks(release)
+                                controller.release()
+                            }
+                        }
+                    },
+                )
+                // Safety net: release the controller even if playback never starts (no result found).
+                window.decorView.postDelayed(release, 30_000L)
+
+                controller.setMediaItem(
+                    MediaItem
+                        .Builder()
+                        .setMediaId("")
+                        .setRequestMetadata(
+                            MediaItem.RequestMetadata
+                                .Builder()
+                                .setSearchQuery(query)
+                                .setExtras(extras)
+                                .build(),
+                        ).build(),
+                )
+                controller.prepare()
+                controller.play()
+            },
+            ContextCompat.getMainExecutor(this),
+        )
     }
 
     private sealed class WidgetTargetRoute(val route: String) {
