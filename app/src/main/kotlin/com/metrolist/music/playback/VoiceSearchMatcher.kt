@@ -31,6 +31,26 @@ object VoiceSearchMatcher {
         return ranks.firstOrNull { it.score >= STRONG_MATCH_THRESHOLD }?.song
     }
 
+    /**
+     * Similarity between a spoken name and a playlist / album / artist name, from 0 to 1.
+     * Case, accents, punctuation and emoji are ignored ("sport" matches "Sport 💪").
+     */
+    fun nameScore(query: String, name: String): Double {
+        val queryTokens = tokenize(query)
+        val nameTokens = tokenize(name)
+        if (queryTokens.isEmpty() || nameTokens.isEmpty()) return 0.0
+        if (queryTokens == nameTokens) return 1.0
+        return fuzzyScore(queryTokens, nameTokens)
+    }
+
+    /** Best candidate whose name scores at least [STRONG_MATCH_THRESHOLD], or null. */
+    fun <T> bestByName(query: String, candidates: List<T>, name: (T) -> String): T? =
+        candidates
+            .map { it to nameScore(query, name(it)) }
+            .filter { it.second >= STRONG_MATCH_THRESHOLD }
+            .maxByOrNull { it.second }
+            ?.first
+
     private fun scoreCandidate(
         song: Song,
         queryLower: String,
@@ -92,6 +112,8 @@ object VoiceSearchMatcher {
 
     internal fun stripAccents(text: String): String =
         DIACRITICS_REGEX.replace(Normalizer.normalize(text, Normalizer.Form.NFD), "")
+            .replace("œ", "oe").replace("Œ", "OE")
+            .replace("æ", "ae").replace("Æ", "AE")
 
     /**
      * Token Similarity based on Jaro-Winkler Distance Algorithm

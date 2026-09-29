@@ -990,4 +990,9 @@
     <string name="stream_source_android_vr_desc">Android VR clients (all versions).</string>
     <string name="stream_source_web_creator">WEB_CREATOR</string>
     <string name="stream_source_web_creator_desc">Creator web client.</string>
+
+    <!-- Voice search -->
+    <string name="voice_no_result">No result for “%1$s”</string>
+    <string name="voice_offline_no_result">Offline: no downloaded song matches “%1$s”</string>
+    <string name="voice_nothing_to_play">Nothing to play in your library</string>
 </resources>

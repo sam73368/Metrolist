@@ -121,6 +121,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionToken
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
@@ -1567,7 +1568,15 @@ class MainActivity : FragmentActivity() {
         val controllerFuture =
             MediaController
                 .Builder(this, SessionToken(this, ComponentName(this, MusicService::class.java)))
-                .buildAsync()
+                .setListener(
+                    object : MediaController.Listener {
+                        // "No result for ..." sent by MediaLibrarySessionCallback.sendVoiceError
+                        override fun onError(controller: MediaController, sessionError: SessionError) {
+                            Toast.makeText(this@MainActivity, sessionError.message, Toast.LENGTH_LONG).show()
+                            controller.release()
+                        }
+                    },
+                ).buildAsync()
         controllerFuture.addListener(
             {
                 val controller =
