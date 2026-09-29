@@ -738,9 +738,11 @@ constructor(
                     val playlistId = path.getOrNull(1) ?: return@future defaultResult
 
                     val songs = try {
-                        YouTube.playlist(playlistId).getOrNull()?.songs?.map {
-                            it.toMediaItem()
-                        } ?: emptyList()
+                        // Same filters as the list shown in Android Auto, so hidden songs don't play.
+                        YouTube.playlist(playlistId).getOrNull()?.songs
+                            ?.filterForPlayback()
+                            ?.map { it.toMediaItem() }
+                            ?: emptyList()
                     } catch (e: Exception) {
                         reportException(e)
                         return@future defaultResult
