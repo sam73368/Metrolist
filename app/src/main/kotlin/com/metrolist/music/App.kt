@@ -5,6 +5,11 @@
 
 package com.metrolist.music
 
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
+import androidx.core.os.UserManagerCompat
 import android.app.ActivityManager
 import android.app.Application
 import android.app.NotificationChannel
@@ -75,6 +80,28 @@ class App :
 
         // Install crash handler first
         CrashHandler.install(this)
+
+        // After a reboot, the alarm reschedule receiver (directBootAware) can start the process
+        // before the first unlock. Credential-encrypted storage (SharedPreferences, DataStore,
+        // database) can't be read yet, so the rest of the setup waits for the unlock.
+        if (!UserManagerCompat.isUserUnlocked(this)) {
+            ContextCompat.registerReceiver(
+                this,
+                object : BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: Intent) {
+                        unregisterReceiver(this)
+                        initializeUnlocked()
+                    }
+                },
+                IntentFilter(Intent.ACTION_USER_UNLOCKED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            return
+        }
+        initializeUnlocked()
+    }
+
+    private fun initializeUnlocked() {
         ArtistNameAliases.initialize(this)
 
         // preferencesDataStore uses filesDir/datastore; proactive mkdir reduces failures on odd ROM states
