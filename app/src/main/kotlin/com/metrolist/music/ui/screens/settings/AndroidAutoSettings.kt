@@ -195,6 +195,8 @@ fun AndroidAutoSettings(
                                         AndroidAutoSection.ARTISTS -> R.drawable.artist
                                         AndroidAutoSection.ALBUMS -> R.drawable.album
                                         AndroidAutoSection.PLAYLISTS -> R.drawable.queue_music
+                                        AndroidAutoSection.RECENT -> R.drawable.history
+                                        AndroidAutoSection.DOWNLOADED -> R.drawable.download
                                     }
                                 ),
                                 title = { Text(section.label()) },
